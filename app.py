@@ -1,7 +1,7 @@
 import customtkinter as ctk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, colorchooser
 import qrcode
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ImageDraw, ImageFont
 import io
 import os
 
@@ -13,21 +13,26 @@ class App(ctk.CTk):
         super().__init__()
 
         self.title("Generador QR Profesional")
-        self.geometry("500x750")
+        self.geometry("500x820")
         
         self.logo_path = None
         self.qr_image_pil = None
+        self.qr_color = "black"
 
         # Title
         self.title_label = ctk.CTkLabel(self, text="Generador de Código QR", font=ctk.CTkFont(size=24, weight="bold"))
         self.title_label.pack(pady=(20, 10))
 
         # Data Input
-        self.data_entry = ctk.CTkTextbox(self, height=100, corner_radius=8)
+        self.data_entry = ctk.CTkTextbox(self, height=80, corner_radius=8)
         self.data_entry.insert("0.0", "Introduce el texto o URL aquí...")
-        self.data_entry.pack(pady=10, padx=20, fill="x")
+        self.data_entry.pack(pady=(10, 5), padx=20, fill="x")
         # Clear placeholder on click
         self.data_entry.bind("<FocusIn>", self.clear_placeholder)
+
+        # Title Input
+        self.title_entry = ctk.CTkEntry(self, placeholder_text="Título para el QR (opcional)")
+        self.title_entry.pack(pady=(5, 10), padx=20, fill="x")
 
         # Logo Selection
         self.logo_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -40,6 +45,16 @@ class App(ctk.CTk):
         self.logo_btn.pack(side="right")
         
         self.remove_logo_btn = ctk.CTkButton(self.logo_frame, text="Quitar", command=self.remove_logo, width=50, fg_color="#C0392B", hover_color="#922B21")
+
+        # Color Selection
+        self.color_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.color_frame.pack(pady=5, padx=20, fill="x")
+        
+        self.color_label = ctk.CTkLabel(self.color_frame, text="Color del QR: Negro", anchor="w")
+        self.color_label.pack(side="left", padx=(0, 10))
+        
+        self.color_btn = ctk.CTkButton(self.color_frame, text="Elegir Color", command=self.select_color)
+        self.color_btn.pack(side="right")
 
         # Generate Button
         self.generate_btn = ctk.CTkButton(self, text="Generar QR", font=ctk.CTkFont(size=16, weight="bold"), height=40, command=self.generate_qr)
@@ -75,8 +90,15 @@ class App(ctk.CTk):
         self.logo_label.configure(text="Ícono/Logo opcional: Ninguno")
         self.remove_logo_btn.pack_forget()
 
+    def select_color(self):
+        color_code = colorchooser.askcolor(title="Elige un color para el QR")[1]
+        if color_code:
+            self.qr_color = color_code
+            self.color_label.configure(text=f"Color del QR: {color_code}")
+
     def generate_qr(self):
         data = self.data_entry.get("0.0", "end-1c").strip()
+        qr_title = self.title_entry.get().strip()
         if not data or data == "Introduce el texto o URL aquí...":
             messagebox.showwarning("Advertencia", "Por favor introduce algún texto o URL.")
             return
@@ -92,7 +114,7 @@ class App(ctk.CTk):
             qr.add_data(data)
             qr.make(fit=True)
 
-            img_qr = qr.make_image(fill_color="black", back_color="white").convert('RGB')
+            img_qr = qr.make_image(fill_color=self.qr_color, back_color="white").convert('RGB')
 
             # Add Logo if selected
             if self.logo_path:
@@ -113,6 +135,38 @@ class App(ctk.CTk):
                 except Exception as e:
                     messagebox.showerror("Error de Logo", f"No se pudo cargar el logo: {e}")
                     return
+
+            # Add Title Text if provided
+            if qr_title:
+                try:
+                    font = ImageFont.truetype("DejaVuSans.ttf", 30)
+                except IOError:
+                    try:
+                        font = ImageFont.truetype("arial.ttf", 30)
+                    except IOError:
+                        font = ImageFont.load_default()
+                        
+                draw = ImageDraw.Draw(img_qr)
+                try:
+                    bbox = draw.textbbox((0, 0), qr_title, font=font)
+                    text_width = bbox[2] - bbox[0]
+                    text_height = bbox[3] - bbox[1]
+                except AttributeError:
+                    text_width, text_height = draw.textsize(qr_title, font=font)
+                    
+                padding_top = text_height + 40
+                new_width = img_qr.width
+                new_height = img_qr.height + padding_top
+                
+                new_img = Image.new("RGB", (new_width, new_height), "white")
+                draw_new = ImageDraw.Draw(new_img)
+                
+                text_x = (new_width - text_width) // 2
+                text_y = 20
+                draw_new.text((text_x, text_y), qr_title, fill=self.qr_color, font=font)
+                
+                new_img.paste(img_qr, (0, padding_top))
+                img_qr = new_img
 
             self.qr_image_pil = img_qr
 
